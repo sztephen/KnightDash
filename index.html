@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Knight Dash — 2-Player Local Duel</title>
+  <meta name="description"
+    content="A 2D pixel-style fighting game where two knights battle on a single screen. Best of 5 rounds. 10 unique maps.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <!-- Load order matters: constants first, main last -->
+  <script src="js/constants.js"></script>
+  <script src="js/input.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/effects.js"></script>
+  <script src="js/maps.js"></script>
+  <script src="js/obstacles.js"></script>
+  <script src="js/camera.js"></script>
+  <script src="js/fighter.js"></script>
+  <script src="js/powerups.js"></script>
+  <script src="js/combat.js"></script>
+  <script src="js/super.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+
+</html>
