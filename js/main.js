@@ -17,6 +17,15 @@
     var roundWinner = 0;
     var matchWinner = 0;
     var titleBlink = 0;
+    var BASE_WALL_LEFT = G.WALL_LEFT;
+    var BASE_WALL_RIGHT = G.WALL_RIGHT;
+    var SUDDEN_DEATH_START_MS = 60000;
+    var SUDDEN_DEATH_MIN_WIDTH = 220;
+    var SUDDEN_DEATH_SHRINK_PX_PER_SEC = 22;
+    var SUDDEN_DEATH_DAMAGE_TICK_MS = 1000;
+    var SUDDEN_DEATH_DAMAGE_PER_TICK = 0.5;
+    var suddenDeathTimer = 0;
+    var suddenDeathActive = false;
 
     // Super pause state
     var superPauseTimer = 0;
@@ -430,6 +439,7 @@
     }
 
     function enterMapRoulette() {
+        resetSuddenDeathArena();
         gameState = G.STATE.MAP_ROULETTE;
         mapPreviewTimer = 0;
         startRouletteAnimation();
@@ -1646,9 +1656,99 @@
     }
 
     function enterMapPreview() {
+        resetSuddenDeathArena();
         gameState = G.STATE.MAP_PREVIEW;
         mapPreviewTimer = 0;
         enterMapSelect();
+    }
+
+    function resetSuddenDeathArena() {
+        suddenDeathTimer = 0;
+        suddenDeathActive = false;
+        G.WALL_LEFT = BASE_WALL_LEFT;
+        G.WALL_RIGHT = BASE_WALL_RIGHT;
+        if (p1) p1._borderShrinkDmgAccum = 0;
+        if (p2) p2._borderShrinkDmgAccum = 0;
+        if (p3) p3._borderShrinkDmgAccum = 0;
+        if (p4) p4._borderShrinkDmgAccum = 0;
+    }
+
+    function updateSuddenDeathBounds(dt) {
+        suddenDeathTimer += dt;
+        if (!suddenDeathActive && suddenDeathTimer >= SUDDEN_DEATH_START_MS) {
+            suddenDeathActive = true;
+        }
+        if (!suddenDeathActive) return;
+
+        var minHalfWidth = SUDDEN_DEATH_MIN_WIDTH * 0.5;
+        var centerX = W * 0.5;
+        var maxLeft = centerX - minHalfWidth;
+        var minRight = centerX + minHalfWidth;
+        var step = SUDDEN_DEATH_SHRINK_PX_PER_SEC * (dt / 1000);
+
+        G.WALL_LEFT = Math.min(maxLeft, G.WALL_LEFT + step);
+        G.WALL_RIGHT = Math.max(minRight, G.WALL_RIGHT - step);
+        if (G.WALL_RIGHT - G.WALL_LEFT < SUDDEN_DEATH_MIN_WIDTH) {
+            G.WALL_LEFT = maxLeft;
+            G.WALL_RIGHT = minRight;
+        }
+    }
+
+    function applySuddenDeathDamage(player, dt) {
+        if (!suddenDeathActive || !player || player.hp <= 0) return;
+
+        var touchPad = 1;
+        var touchingLeft = player.x - player.w * 0.5 <= G.WALL_LEFT + touchPad;
+        var touchingRight = player.x + player.w * 0.5 >= G.WALL_RIGHT - touchPad;
+
+        if (!touchingLeft && !touchingRight) {
+            player._borderShrinkDmgAccum = 0;
+            return;
+        }
+
+        if (typeof player._borderShrinkDmgAccum !== 'number') player._borderShrinkDmgAccum = 0;
+        player._borderShrinkDmgAccum += dt;
+
+        while (player._borderShrinkDmgAccum >= SUDDEN_DEATH_DAMAGE_TICK_MS && player.hp > 0) {
+            player._borderShrinkDmgAccum -= SUDDEN_DEATH_DAMAGE_TICK_MS;
+            var hazardX = touchingLeft ? G.WALL_LEFT - 20 : G.WALL_RIGHT + 20;
+            if (typeof player.takeDamage === 'function') player.takeDamage(SUDDEN_DEATH_DAMAGE_PER_TICK, hazardX);
+            else {
+                player.hp -= SUDDEN_DEATH_DAMAGE_PER_TICK;
+                if (player.hp < 0) player.hp = 0;
+            }
+        }
+    }
+
+    function applySuddenDeathDamageAll(dt) {
+        applySuddenDeathDamage(p1, dt);
+        applySuddenDeathDamage(p2, dt);
+        if (G.is2v2) {
+            applySuddenDeathDamage(p3, dt);
+            applySuddenDeathDamage(p4, dt);
+        }
+    }
+
+    function drawSuddenDeathBorders() {
+        if (!suddenDeathActive) return;
+        var pulse = Math.sin(Date.now() * 0.012) * 0.5 + 0.5;
+        var sideAlpha = 0.14 + pulse * 0.08;
+        var edgeAlpha = 0.45 + pulse * 0.35;
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(190,30,30,' + sideAlpha + ')';
+        if (G.WALL_LEFT > 0) ctx.fillRect(0, 0, G.WALL_LEFT, H);
+        if (G.WALL_RIGHT < W) ctx.fillRect(G.WALL_RIGHT, 0, W - G.WALL_RIGHT, H);
+
+        ctx.strokeStyle = 'rgba(255,120,120,' + edgeAlpha + ')';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(G.WALL_LEFT, 0);
+        ctx.lineTo(G.WALL_LEFT, H);
+        ctx.moveTo(G.WALL_RIGHT, 0);
+        ctx.lineTo(G.WALL_RIGHT, H);
+        ctx.stroke();
+        ctx.restore();
     }
 
     // ─── Round / Match Control ────────────────────────────────────
@@ -1760,6 +1860,7 @@
     }
 
     function resetRound() {
+        resetSuddenDeathArena();
         if (G.is2v2) {
             // 2v2: P1+P2 on left, P3+P4 on right
             p1.reset(W * 0.25);
@@ -1818,6 +1919,7 @@
     }
 
     function startMatch() {
+        resetSuddenDeathArena();
         applyFighterHPByMode();
         p1.roundWins = 0;
         p2.roundWins = 0;
@@ -2592,6 +2694,7 @@
                     G.drawSuperTimer(p4);
                 }
                 ctx.restore();
+                drawSuddenDeathBorders();
                 if (typeof G.drawMapDynamicsOverlay === 'function') G.drawMapDynamicsOverlay();
                 if (G.is2v2) {
                     G.drawUI(p1, p2, p3, p4);
@@ -2628,6 +2731,8 @@
                 if (inHitstop) {
                     G.hitstopTimer = Math.max(0, G.hitstopTimer - dt);
                 } else {
+                    updateSuddenDeathBounds(dt);
+
                     if (typeof G.updateMapDynamics === 'function') {
                         G.updateMapDynamics(dt, p1, p2, { allowHazards: true, p3: G.is2v2 ? p3 : null, p4: G.is2v2 ? p4 : null });
                     }
@@ -2697,6 +2802,7 @@
                         superPauseColor = req.color;
                         gameState = G.STATE.SUPER_PAUSE;
                     }
+                    applySuddenDeathDamageAll(dt);
                     G.updateParticles(dt);
                     G.updateObstacles(dt);
                 }
@@ -2758,6 +2864,7 @@
                 }
 
                 ctx.restore(); // Restore camera zoom
+                drawSuddenDeathBorders();
 
                 if (typeof G.drawMapDynamicsOverlay === 'function') G.drawMapDynamicsOverlay();
                 // UI drawn OUTSIDE zoom so it stays readable
